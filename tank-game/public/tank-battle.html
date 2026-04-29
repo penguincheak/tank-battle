@@ -1,0 +1,2202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>坦克大战</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
+
+        :root {
+            --cyan: #00ffff;
+            --cyan-dim: #006666;
+            --magenta: #ff00ff;
+            --red: #ff3366;
+            --green: #00ff88;
+            --yellow: #ffff00;
+            --dark-bg: #0a0a15;
+            --panel-bg: rgba(5, 15, 30, 0.85);
+            --glass-bg: rgba(10, 20, 40, 0.6);
+            --glass-border: rgba(0, 255, 255, 0.15);
+            --font-display: 'Orbitron', monospace;
+            --font-ui: 'Rajdhani', 'Segoe UI', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a15 0%, #1a1a2e 50%, #0f0f1a 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: var(--font-ui);
+            overflow: hidden;
+        }
+
+        /* ===== Animated Background ===== */
+        .bg-anim {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .bg-anim .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            animation: orbFloat 12s ease-in-out infinite alternate;
+        }
+
+        .bg-anim .orb:nth-child(1) {
+            width: 400px; height: 400px;
+            background: rgba(0, 255, 255, 0.06);
+            top: -10%; left: -5%;
+            animation-duration: 14s;
+        }
+
+        .bg-anim .orb:nth-child(2) {
+            width: 350px; height: 350px;
+            background: rgba(255, 0, 255, 0.05);
+            bottom: -10%; right: -5%;
+            animation-duration: 18s;
+            animation-delay: -4s;
+        }
+
+        .bg-anim .orb:nth-child(3) {
+            width: 250px; height: 250px;
+            background: rgba(0, 255, 136, 0.04);
+            top: 50%; left: 60%;
+            animation-duration: 16s;
+            animation-delay: -8s;
+        }
+
+        @keyframes orbFloat {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(40px, -30px) scale(1.1); }
+            100% { transform: translate(-20px, 20px) scale(0.95); }
+        }
+
+        /* ===== Scanline overlay ===== */
+        .scanlines {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.03) 2px,
+                rgba(0, 0, 0, 0.03) 4px
+            );
+        }
+
+        /* ===== Game Container ===== */
+        .game-container {
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            color: var(--cyan);
+            text-shadow: 0 0 20px var(--cyan), 0 0 60px rgba(0, 255, 255, 0.4);
+            margin-bottom: 20px;
+            font-size: 2.5rem;
+            letter-spacing: 12px;
+            font-weight: 900;
+            font-family: var(--font-display);
+            position: relative;
+            z-index: 1;
+        }
+
+        #gameCanvas {
+            border: 2px solid rgba(0, 255, 255, 0.5);
+            box-shadow:
+                0 0 30px rgba(0, 255, 255, 0.2),
+                0 0 60px rgba(0, 255, 255, 0.05),
+                inset 0 0 80px rgba(0, 255, 255, 0.03);
+            background: #0a0a12;
+            border-radius: 6px;
+        }
+
+        /* ===== HUD Panel ===== */
+        .ui-panel {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: linear-gradient(180deg, rgba(0, 10, 20, 0.7) 0%, transparent 100%);
+            border-radius: 6px 6px 0 0;
+        }
+
+        .ui-box {
+            background: rgba(5, 15, 30, 0.75);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            padding: 6px 16px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-family: var(--font-ui);
+            font-weight: 600;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+
+        .ui-box:hover {
+            border-color: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.15);
+        }
+
+        .ui-box.level {
+            color: var(--yellow);
+            text-shadow: 0 0 8px rgba(255, 255, 0, 0.5);
+            border-color: rgba(255, 255, 0, 0.2);
+        }
+
+        .ui-box.level:hover {
+            border-color: rgba(255, 255, 0, 0.5);
+            box-shadow: 0 0 15px rgba(255, 255, 0, 0.15);
+        }
+
+        .ui-box.score {
+            color: var(--magenta);
+            text-shadow: 0 0 8px rgba(255, 0, 255, 0.5);
+            border-color: rgba(255, 0, 255, 0.2);
+        }
+
+        .ui-box.score:hover {
+            border-color: rgba(255, 0, 255, 0.5);
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.15);
+        }
+
+        .ui-box.lives {
+            color: var(--green);
+            text-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+            border-color: rgba(0, 255, 136, 0.2);
+        }
+
+        .ui-box.lives:hover {
+            border-color: rgba(0, 255, 136, 0.5);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.15);
+        }
+
+        .ui-box.user-panel {
+            color: var(--cyan);
+            display: none;
+        }
+
+        /* ===== Level Selector Panel ===== */
+        #levelSelector {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 80px;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(5, 15, 30, 0.95) 0%, rgba(5, 15, 30, 0.85) 70%, transparent 100%);
+            padding: 80px 10px 20px 10px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            z-index: 100;
+            border-right: 1px solid rgba(0, 255, 255, 0.1);
+        }
+
+        #levelSelector.show {
+            display: flex;
+        }
+
+        .level-title {
+            color: var(--cyan);
+            font-family: var(--font-display);
+            font-size: 12px;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            writing-mode: vertical-rl;
+        }
+
+        .level-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            max-height: calc(100% - 40px);
+            padding-right: 4px;
+        }
+
+        .level-grid::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .level-grid::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 255, 0.3);
+            border-radius: 2px;
+        }
+
+        .level-btn {
+            width: 52px;
+            height: 36px;
+            background: rgba(0, 20, 40, 0.6);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 6px;
+            color: rgba(150, 170, 190, 0.6);
+            font-family: var(--font-display);
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .level-btn:hover {
+            background: rgba(0, 40, 60, 0.7);
+            border-color: rgba(0, 255, 255, 0.5);
+            color: var(--cyan);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .level-btn.current {
+            background: rgba(0, 255, 255, 0.15);
+            border-color: var(--cyan);
+            color: var(--cyan);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .level-btn.locked {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .level-btn.locked:hover {
+            background: rgba(0, 20, 40, 0.6);
+            border-color: rgba(0, 255, 255, 0.2);
+            color: rgba(150, 170, 190, 0.6);
+            box-shadow: none;
+            transform: none;
+        }
+
+        #logoutBtn {
+            margin-left: 10px;
+            background: linear-gradient(135deg, #ff3366, #cc1144);
+            border: none;
+            color: #fff;
+            padding: 3px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        #logoutBtn:hover {
+            background: linear-gradient(135deg, #ff4477, #dd2255);
+            box-shadow: 0 0 12px rgba(255, 51, 102, 0.4);
+            transform: translateY(-1px);
+        }
+
+        /* ===== Controls Bar ===== */
+        .controls {
+            margin-top: 16px;
+            color: rgba(150, 170, 190, 0.6);
+            font-size: 13px;
+            text-align: center;
+            letter-spacing: 0.5px;
+            font-family: var(--font-ui);
+            font-weight: 600;
+        }
+
+        .controls span {
+            color: rgba(0, 255, 255, 0.7);
+            margin: 0 8px;
+            padding: 4px 12px;
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            border-radius: 4px;
+            background: rgba(0, 255, 255, 0.03);
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .controls span:hover {
+            border-color: rgba(0, 255, 255, 0.4);
+            background: rgba(0, 255, 255, 0.08);
+            color: var(--cyan);
+        }
+
+        .heart {
+            display: inline-block;
+            color: #ff3366;
+            text-shadow: 0 0 8px rgba(255, 51, 102, 0.6);
+            margin-right: 2px;
+        }
+
+        /* ===== Auth Panel - Full Redesign ===== */
+        #authPanel {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: radial-gradient(ellipse at center, rgba(10, 15, 30, 0.97) 0%, rgba(5, 5, 12, 0.99) 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .auth-card {
+            width: 380px;
+            padding: 40px 36px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                0 0 80px rgba(0, 255, 255, 0.03),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -50%;
+            width: 200%; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+            animation: scanLine 4s linear infinite;
+        }
+
+        @keyframes scanLine {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .auth-title {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--cyan);
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.5), 0 0 60px rgba(0, 255, 255, 0.2);
+            text-align: center;
+            margin-bottom: 8px;
+            letter-spacing: 8px;
+        }
+
+        .auth-subtitle {
+            text-align: center;
+            color: rgba(150, 170, 190, 0.5);
+            font-size: 13px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 32px;
+            font-family: var(--font-ui);
+        }
+
+        .auth-input-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .auth-input-group input {
+            width: 100%;
+            padding: 14px 16px 14px 44px;
+            background: rgba(0, 20, 40, 0.5);
+            border: 1px solid rgba(0, 255, 255, 0.12);
+            color: #e0f0ff;
+            font-size: 15px;
+            font-family: var(--font-ui);
+            font-weight: 600;
+            border-radius: 8px;
+            outline: none;
+            transition: all 0.3s ease;
+            letter-spacing: 0.5px;
+        }
+
+        .auth-input-group input::placeholder {
+            color: rgba(100, 140, 170, 0.4);
+            font-weight: 400;
+        }
+
+        .auth-input-group input:focus {
+            border-color: rgba(0, 255, 255, 0.5);
+            background: rgba(0, 25, 50, 0.6);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.08), inset 0 0 20px rgba(0, 255, 255, 0.02);
+        }
+
+        .auth-input-group .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(0, 255, 255, 0.3);
+            font-size: 16px;
+            transition: color 0.3s ease;
+        }
+
+        .auth-input-group input:focus + .input-icon,
+        .auth-input-group input:focus ~ .input-icon {
+            color: rgba(0, 255, 255, 0.6);
+        }
+
+        .auth-btn {
+            width: 100%;
+            padding: 14px;
+            margin-top: 8px;
+            background: linear-gradient(135deg, #00cccc, #00eeff);
+            color: #001a1a;
+            font-size: 16px;
+            font-family: var(--font-ui);
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-btn::after {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: linear-gradient(
+                45deg,
+                transparent 40%,
+                rgba(255, 255, 255, 0.1) 50%,
+                transparent 60%
+            );
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
+        }
+
+        .auth-btn:hover {
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3), 0 4px 15px rgba(0, 0, 0, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .auth-btn:hover::after {
+            transform: translateX(100%);
+        }
+
+        .auth-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+        }
+
+        .auth-switch {
+            text-align: center;
+            color: rgba(150, 170, 190, 0.5);
+            margin-top: 20px;
+            font-size: 14px;
+            font-family: var(--font-ui);
+        }
+
+        .auth-switch a {
+            color: var(--cyan);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            position: relative;
+        }
+
+        .auth-switch a::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; left: 0;
+            width: 0; height: 1px;
+            background: var(--cyan);
+            transition: width 0.3s ease;
+        }
+
+        .auth-switch a:hover {
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .auth-switch a:hover::after {
+            width: 100%;
+        }
+
+        .auth-msg {
+            text-align: center;
+            color: var(--red);
+            margin-top: 12px;
+            font-size: 13px;
+            font-family: var(--font-ui);
+            min-height: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .auth-success {
+            color: var(--green) !important;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
+        /* Form transition */
+        #loginForm, #registerForm {
+            animation: fadeSlideIn 0.4s ease;
+        }
+
+        @keyframes fadeSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Particle canvas for auth */
+        #authParticles {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 999;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-anim">
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+    </div>
+    <div class="scanlines"></div>
+
+    <!-- 登录/注册界面 -->
+    <canvas id="authParticles"></canvas>
+    <div id="authPanel">
+        <div class="auth-card">
+            <div class="auth-title">TANK BATTLE</div>
+            <div class="auth-subtitle">Armored Warfare</div>
+
+            <div id="loginForm">
+                <div class="auth-input-group">
+                    <input type="text" id="loginUsername" placeholder="用户名">
+                    <span class="input-icon">&#9678;</span>
+                </div>
+                <div class="auth-input-group">
+                    <input type="password" id="loginPassword" placeholder="密码">
+                    <span class="input-icon">&#9919;</span>
+                </div>
+                <button class="auth-btn" onclick="login()">登 录</button>
+                <div class="auth-switch">
+                    没有账号? <a href="#" onclick="showRegister()">立即注册</a>
+                </div>
+                <p id="loginMsg" class="auth-msg"></p>
+            </div>
+
+            <div id="registerForm" style="display:none;">
+                <div class="auth-input-group">
+                    <input type="text" id="regUsername" placeholder="用户名 (3-20字符)">
+                    <span class="input-icon">&#9678;</span>
+                </div>
+                <div class="auth-input-group">
+                    <input type="password" id="regPassword" placeholder="密码 (至少6位)">
+                    <span class="input-icon">&#9919;</span>
+                </div>
+                <button class="auth-btn" onclick="register()">注 册</button>
+                <div class="auth-switch">
+                    已有账号? <a href="#" onclick="showLogin()">返回登录</a>
+                </div>
+                <p id="regMsg" class="auth-msg"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 关卡选择面板 -->
+    <div id="levelSelector">
+        <div class="level-title">选择关卡</div>
+        <div class="level-grid" id="levelGrid"></div>
+    </div>
+
+    <h1 style="display:none;">TANK BATTLE</h1>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="900" height="650"></canvas>
+        <div class="ui-panel">
+            <div class="ui-box level">关卡 <span id="levelNum">1</span>/12</div>
+            <div class="ui-box score">得分 <span id="scoreNum">0</span></div>
+            <div class="ui-box lives">生命 <span id="livesNum">&#10084;&#10084;&#10084;</span></div>
+            <div id="userPanel" class="ui-box user-panel">
+                <span id="userName"></span>
+                <button id="logoutBtn" onclick="logout()">登出</button>
+            </div>
+        </div>
+    </div>
+    <div class="controls">
+        <span>W/&uarr; 前进</span>
+        <span>S/&darr; 后退</span>
+        <span>A/&larr; 左平移</span>
+        <span>D/&rarr; 右平移</span>
+        <span>空格 射击</span>
+    </div>
+
+    <script>
+        // ===== Auth Particle Background =====
+        (function() {
+            const pc = document.getElementById('authParticles');
+            const pctx = pc.getContext('2d');
+            let authParticles = [];
+            const maxP = 60;
+
+            function resizeAuthCanvas() {
+                pc.width = window.innerWidth;
+                pc.height = window.innerHeight;
+            }
+            resizeAuthCanvas();
+            window.addEventListener('resize', resizeAuthCanvas);
+
+            class AuthParticle {
+                constructor() { this.reset(); }
+                reset() {
+                    this.x = Math.random() * pc.width;
+                    this.y = Math.random() * pc.height;
+                    this.size = Math.random() * 2 + 0.5;
+                    this.speedX = (Math.random() - 0.5) * 0.5;
+                    this.speedY = (Math.random() - 0.5) * 0.5;
+                    this.alpha = Math.random() * 0.4 + 0.1;
+                }
+                update() {
+                    this.x += this.speedX;
+                    this.y += this.speedY;
+                    if (this.x < 0 || this.x > pc.width || this.y < 0 || this.y > pc.height) this.reset();
+                }
+                draw() {
+                    pctx.beginPath();
+                    pctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    pctx.fillStyle = `rgba(0, 255, 255, ${this.alpha})`;
+                    pctx.fill();
+                }
+            }
+
+            for (let i = 0; i < maxP; i++) authParticles.push(new AuthParticle());
+
+            function drawAuthParticles() {
+                if (document.getElementById('authPanel').style.display === 'none') return;
+                pctx.clearRect(0, 0, pc.width, pc.height);
+
+                // Draw connections
+                for (let i = 0; i < authParticles.length; i++) {
+                    for (let j = i + 1; j < authParticles.length; j++) {
+                        const dx = authParticles[i].x - authParticles[j].x;
+                        const dy = authParticles[i].y - authParticles[j].y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 120) {
+                            pctx.beginPath();
+                            pctx.moveTo(authParticles[i].x, authParticles[i].y);
+                            pctx.lineTo(authParticles[j].x, authParticles[j].y);
+                            pctx.strokeStyle = `rgba(0, 255, 255, ${0.08 * (1 - dist / 120)})`;
+                            pctx.lineWidth = 0.5;
+                            pctx.stroke();
+                        }
+                    }
+                }
+
+                authParticles.forEach(p => { p.update(); p.draw(); });
+                requestAnimationFrame(drawAuthParticles);
+            }
+            drawAuthParticles();
+        })();
+
+        // 用户相关
+        let currentUser = null;
+
+        // 显示登录表单
+        function showLogin() {
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginMsg').textContent = '';
+            document.getElementById('loginMsg').classList.remove('auth-success');
+        }
+
+        // 显示注册表单
+        function showRegister() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+            document.getElementById('registerForm').style.animation = 'none';
+            document.getElementById('registerForm').offsetHeight; // trigger reflow
+            document.getElementById('registerForm').style.animation = '';
+            document.getElementById('regMsg').textContent = '';
+            document.getElementById('regMsg').classList.remove('auth-success');
+        }
+
+        // 注册
+        async function register() {
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value;
+
+            const response = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                const msg = document.getElementById('regMsg');
+                msg.classList.add('auth-success');
+                msg.textContent = '注册成功，请登录';
+                setTimeout(showLogin, 1500);
+            } else {
+                document.getElementById('regMsg').textContent = result.message;
+            }
+        }
+
+        // 登录
+        async function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                currentUser = result.user;
+                document.getElementById('authPanel').style.display = 'none';
+                // 显示用户名
+                document.getElementById('userPanel').style.display = 'block';
+                document.getElementById('userName').textContent = currentUser.username;
+                // 显示关卡选择面板
+                document.getElementById('levelSelector').classList.add('show');
+                // 初始化游戏（从保存的关卡开始）
+                initGameWithLevel(currentUser.currentLevel);
+                // 渲染关卡选择器
+                renderLevelSelector();
+            } else {
+                document.getElementById('loginMsg').textContent = result.message;
+            }
+        }
+
+        // 登出 - 刷新页面回到登录界面
+        function logout() {
+            if (confirm('确定要登出吗？')) {
+                currentUser = null;
+                location.reload();
+            }
+        }
+
+        // 渲染关卡选择面板
+        function renderLevelSelector() {
+            const levelGrid = document.getElementById('levelGrid');
+            levelGrid.innerHTML = '';
+
+            const maxLevel = currentUser.maxLevel || 1;
+            const currentLevel = gameState.level;
+
+            for (let i = 1; i <= 12; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'level-btn';
+                btn.textContent = i;
+
+                // 未解锁的关卡
+                if (i > maxLevel) {
+                    btn.classList.add('locked');
+                    btn.title = '未解锁';
+                } else {
+                    // 当前关卡
+                    if (i === currentLevel) {
+                        btn.classList.add('current');
+                    }
+                    btn.onclick = () => selectLevel(i);
+                }
+
+                levelGrid.appendChild(btn);
+            }
+        }
+
+        // 选择关卡
+        function selectLevel(level) {
+            if (!currentUser || level > (currentUser.maxLevel || 1)) return;
+
+            gameState.level = level;
+            gameState.score = 0;
+            gameState.isPlaying = true;
+            gameState.isGameOver = false;
+            gameState.isVictory = false;
+
+            // 重建围墙
+            walls = [];
+            const mapType = levels[level - 1].map;
+            for (let w of wallLayouts[mapType]) {
+                walls.push(new Wall(w.x, w.y, w.w, w.h, w.hp));
+            }
+
+            initLevel(level);
+            updateUI();
+            renderLevelSelector();
+        }
+
+        // 保存进度
+        async function saveProgress(level, score) {
+            if (!currentUser || !currentUser.id) return;
+
+            const response = await fetch('/api/progress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: currentUser.id, level, score })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                // 更新本地用户数据
+                currentUser.currentLevel = level;
+                if (level > currentUser.maxLevel) {
+                    currentUser.maxLevel = level;
+                }
+                // 更新关卡选择面板
+                if (document.getElementById('levelSelector').classList.contains('show')) {
+                    renderLevelSelector();
+                }
+            }
+        }
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const levelEl = document.getElementById('levelNum');
+        const scoreEl = document.getElementById('scoreNum');
+        const livesEl = document.getElementById('livesNum');
+
+        // 关卡数据
+        const levels = [
+            { level: 1, enemyCount: 3, enemySpeed: 0.5, fireRate: 0.008, intel: 0.25, map: 'simple' },
+            { level: 2, enemyCount: 3, enemySpeed: 0.5, fireRate: 0.01, intel: 0.3, map: 'simple' },
+            { level: 3, enemyCount: 4, enemySpeed: 0.5, fireRate: 0.012, intel: 0.35, map: 'medium' },
+            { level: 4, enemyCount: 4, enemySpeed: 0.5, fireRate: 0.015, intel: 0.4, map: 'medium' },
+            { level: 5, enemyCount: 5, enemySpeed: 0.5, fireRate: 0.018, intel: 0.45, map: 'hard' },
+            { level: 6, enemyCount: 5, enemySpeed: 0.5, fireRate: 0.02, intel: 0.5, map: 'hard' },
+            { level: 7, enemyCount: 6, enemySpeed: 0.6, fireRate: 0.025, intel: 0.55, map: 'hard' },
+            { level: 8, enemyCount: 6, enemySpeed: 0.6, fireRate: 0.03, intel: 0.6, map: 'boss' },
+            { level: 9, enemyCount: 7, enemySpeed: 0.6, fireRate: 0.035, intel: 0.65, map: 'boss' },
+            { level: 10, enemyCount: 7, enemySpeed: 0.7, fireRate: 0.04, intel: 0.7, map: 'boss' },
+            { level: 11, enemyCount: 8, enemySpeed: 0.7, fireRate: 0.045, intel: 0.8, map: 'boss' },
+            { level: 12, enemyCount: 8, enemySpeed: 0.8, fireRate: 0.05, intel: 0.85, map: 'final' }
+        ];
+
+        // 围墙布局 - 分布在整个地图
+        const wallLayouts = {
+            simple: [
+                // 上方左右角落
+                {x: 80, y: 100, w: 20, h: 80, hp: 2}, {x: 800, y: 100, w: 20, h: 80, hp: 2},
+                // 中间左右
+                {x: 80, y: 300, w: 20, h: 60, hp: 2}, {x: 800, y: 300, w: 20, h: 60, hp: 2},
+                // 下方左右角落
+                {x: 80, y: 480, w: 20, h: 80, hp: 2}, {x: 800, y: 480, w: 20, h: 80, hp: 2},
+                // 中间上下
+                {x: 380, y: 180, w: 140, h: 18, hp: 2}, {x: 380, y: 460, w: 140, h: 18, hp: 2},
+            ],
+            medium: [
+                // 四角
+                {x: 60, y: 80, w: 18, h: 70, hp: 2}, {x: 822, y: 80, w: 18, h: 70, hp: 2},
+                {x: 60, y: 500, w: 18, h: 70, hp: 2}, {x: 822, y: 500, w: 18, h: 70, hp: 2},
+                // 上中
+                {x: 300, y: 120, w: 18, h: 60, hp: 2}, {x: 582, y: 120, w: 18, h: 60, hp: 2},
+                // 下中
+                {x: 300, y: 480, w: 18, h: 60, hp: 2}, {x: 582, y: 480, w: 18, h: 60, hp: 2},
+                // 左中
+                {x: 180, y: 250, w: 18, h: 100, hp: 2}, {x: 180, y: 380, w: 18, h: 100, hp: 2},
+                // 右中
+                {x: 702, y: 250, w: 18, h: 100, hp: 2}, {x: 702, y: 380, w: 18, h: 100, hp: 2},
+                // 中间堡垒
+                {x: 400, y: 290, w: 100, h: 70, hp: 4}
+            ],
+            hard: [
+                // 顶部两排
+                {x: 100, y: 90, w: 16, h: 50, hp: 2}, {x: 250, y: 90, w: 16, h: 50, hp: 2},
+                {x: 400, y: 90, w: 16, h: 50, hp: 2}, {x: 550, y: 90, w: 16, h: 50, hp: 2},
+                {x: 700, y: 90, w: 16, h: 50, hp: 2},
+                // 底部两排
+                {x: 100, y: 520, w: 16, h: 50, hp: 2}, {x: 250, y: 520, w: 16, h: 50, hp: 2},
+                {x: 400, y: 520, w: 16, h: 50, hp: 2}, {x: 550, y: 520, w: 16, h: 50, hp: 2},
+                {x: 700, y: 520, w: 16, h: 50, hp: 2},
+                // 左侧
+                {x: 80, y: 200, w: 16, h: 80, hp: 2}, {x: 80, y: 350, w: 16, h: 80, hp: 2},
+                // 右侧
+                {x: 804, y: 200, w: 16, h: 80, hp: 2}, {x: 804, y: 350, w: 16, h: 80, hp: 2},
+                // 中间
+                {x: 350, y: 280, w: 200, h: 16, hp: 2}, {x: 350, y: 380, w: 200, h: 16, hp: 2},
+                {x: 430, y: 310, w: 40, h: 50, hp: 4}
+            ],
+            boss: [
+                // 四角
+                {x: 60, y: 70, w: 18, h: 80, hp: 2}, {x: 822, y: 70, w: 18, h: 80, hp: 2},
+                {x: 60, y: 500, w: 18, h: 80, hp: 2}, {x: 822, y: 500, w: 18, h: 80, hp: 2},
+                // 上排
+                {x: 180, y: 100, w: 18, h: 50, hp: 2}, {x: 350, y: 100, w: 18, h: 50, hp: 2},
+                {x: 532, y: 100, w: 18, h: 50, hp: 2}, {x: 702, y: 100, w: 18, h: 50, hp: 2},
+                // 下排
+                {x: 180, y: 500, w: 18, h: 50, hp: 2}, {x: 350, y: 500, w: 18, h: 50, hp: 2},
+                {x: 532, y: 500, w: 18, h: 50, hp: 2}, {x: 702, y: 500, w: 18, h: 50, hp: 2},
+                // 左中
+                {x: 100, y: 220, w: 18, h: 60, hp: 2}, {x: 100, y: 370, w: 18, h: 60, hp: 2},
+                // 右中
+                {x: 782, y: 220, w: 18, h: 60, hp: 2}, {x: 782, y: 370, w: 18, h: 60, hp: 2},
+                // 中间
+                {x: 400, y: 280, w: 100, h: 90, hp: 4}
+            ],
+            final: [
+                // 顶部密集
+                {x: 60, y: 80, w: 15, h: 40, hp: 2}, {x: 120, y: 80, w: 15, h: 40, hp: 2},
+                {x: 180, y: 80, w: 15, h: 40, hp: 2}, {x: 240, y: 80, w: 15, h: 40, hp: 2},
+                {x: 645, y: 80, w: 15, h: 40, hp: 2}, {x: 705, y: 80, w: 15, h: 40, hp: 2},
+                {x: 765, y: 80, w: 15, h: 40, hp: 2}, {x: 825, y: 80, w: 15, h: 40, hp: 2},
+                // 底部密集
+                {x: 60, y: 530, w: 15, h: 40, hp: 2}, {x: 120, y: 530, w: 15, h: 40, hp: 2},
+                {x: 180, y: 530, w: 15, h: 40, hp: 2}, {x: 240, y: 530, w: 15, h: 40, hp: 2},
+                {x: 645, y: 530, w: 15, h: 40, hp: 2}, {x: 705, y: 530, w: 15, h: 40, hp: 2},
+                {x: 765, y: 530, w: 15, h: 40, hp: 2}, {x: 825, y: 530, w: 15, h: 40, hp: 2},
+                // 左列
+                {x: 80, y: 180, w: 15, h: 50, hp: 2}, {x: 80, y: 260, w: 15, h: 50, hp: 2},
+                {x: 80, y: 340, w: 15, h: 50, hp: 2}, {x: 80, y: 420, w: 15, h: 50, hp: 2},
+                // 右列
+                {x: 805, y: 180, w: 15, h: 50, hp: 2}, {x: 805, y: 260, w: 15, h: 50, hp: 2},
+                {x: 805, y: 340, w: 15, h: 50, hp: 2}, {x: 805, y: 420, w: 15, h: 50, hp: 2},
+                // 中间横墙
+                {x: 300, y: 200, w: 15, h: 80, hp: 2}, {x: 585, y: 200, w: 15, h: 80, hp: 2},
+                {x: 300, y: 380, w: 15, h: 80, hp: 2}, {x: 585, y: 380, w: 15, h: 80, hp: 2},
+                {x: 350, y: 290, w: 200, h: 15, hp: 2}, {x: 350, y: 360, w: 200, h: 15, hp: 2},
+                // 中心堡垒
+                {x: 430, y: 300, w: 40, h: 60, hp: 4}
+            ]
+        };
+
+        // 游戏状态
+        let gameState = {
+            level: 1,
+            score: 0,
+            lives: 3,
+            maxLives: 3,
+            isPlaying: false,
+            isPaused: false,
+            isGameOver: false,
+            isVictory: false,
+            levelTransition: false,
+            transitionTimer: 0
+        };
+
+        let keys = {};
+        let player, enemies, bullets, walls, particles;
+
+        // 坦克类
+        class Tank {
+            constructor(x, y, color, isPlayer = false) {
+                this.x = x;
+                this.y = y;
+                this.width = 36;
+                this.height = 36;
+                this.color = color;
+                this.color2 = isPlayer ? '#00ffff' : '#ff3366';
+                this.speed = isPlayer ? 1.5 : 0.5;
+                this.angle = isPlayer ? 0 : Math.random() * Math.PI * 2;
+                this.isPlayer = isPlayer;
+                this.cooldown = 0;
+                this.health = isPlayer ? 3 : 3;
+                this.maxHealth = isPlayer ? 3 : 3;
+                this.bobOffset = 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                const bob = Math.sin(this.bobOffset) * 0.8;
+                const W = this.width;
+                const H = this.height;
+                const p = this.isPlayer;
+                const c1 = p ? '#00cccc' : '#cc3333';
+                const c2 = p ? '#006666' : '#661111';
+                const c3 = p ? '#003333' : '#330808';
+                const glow = p ? '#00ffff' : '#ff3366';
+                const glowR = p ? [0,255,255] : [255,51,102];
+
+                // Engine glow under tank
+                ctx.shadowColor = glow;
+                ctx.shadowBlur = 25;
+                ctx.fillStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.08)`;
+                ctx.beginPath();
+                ctx.ellipse(0, 4 + bob, W * 0.6, H * 0.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // === LEFT TRACK ===
+                const tw = 9, tOff = W/2 + 2;
+                const tTop = -H/2 + 1 + bob, tH = H - 2;
+                // Outer track body
+                const ltGrad = ctx.createLinearGradient(-tOff - tw, 0, -tOff + 2, 0);
+                ltGrad.addColorStop(0, '#111');
+                ltGrad.addColorStop(0.3, '#2a2a2a');
+                ltGrad.addColorStop(0.7, '#222');
+                ltGrad.addColorStop(1, '#181818');
+                ctx.fillStyle = ltGrad;
+                ctx.beginPath();
+                ctx.roundRect(-tOff - tw + 1, tTop, tw, tH, 2);
+                ctx.fill();
+                // Track tread pattern
+                ctx.strokeStyle = '#3a3a3a';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < tH; i += 5) {
+                    const yo = (i + this.bobOffset * 3) % tH;
+                    ctx.beginPath();
+                    ctx.moveTo(-tOff - tw + 2, tTop + yo);
+                    ctx.lineTo(-tOff - 1, tTop + yo);
+                    ctx.stroke();
+                }
+                // Track edge highlight
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.15)`;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-tOff - tw + 1.5, tTop + 0.5, tw - 1, tH - 1);
+                // Track wheel dots
+                ctx.fillStyle = '#444';
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(-tOff - tw/2 + 0.5, tTop + tH * (0.2 + i * 0.3), 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#555';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+
+                // === RIGHT TRACK ===
+                const rtGrad = ctx.createLinearGradient(tOff - 2, 0, tOff + tw, 0);
+                rtGrad.addColorStop(0, '#181818');
+                rtGrad.addColorStop(0.3, '#222');
+                rtGrad.addColorStop(0.7, '#2a2a2a');
+                rtGrad.addColorStop(1, '#111');
+                ctx.fillStyle = rtGrad;
+                ctx.beginPath();
+                ctx.roundRect(tOff - 1, tTop, tw, tH, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#3a3a3a';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < tH; i += 5) {
+                    const yo = (i + this.bobOffset * 3) % tH;
+                    ctx.beginPath();
+                    ctx.moveTo(tOff + 1, tTop + yo);
+                    ctx.lineTo(tOff + tw - 1, tTop + yo);
+                    ctx.stroke();
+                }
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.15)`;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(tOff - 0.5, tTop + 0.5, tw - 1, tH - 1);
+                ctx.fillStyle = '#444';
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(tOff + tw/2 - 0.5, tTop + tH * (0.2 + i * 0.3), 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#555';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+
+                // === HULL (main body) ===
+                const hOff = W/2 - 4, hTop = -H/2 + 2 + bob, hW = W - 8, hH = H - 4;
+                const bodyGrad = ctx.createLinearGradient(0, hTop, 0, hTop + hH);
+                bodyGrad.addColorStop(0, c1);
+                bodyGrad.addColorStop(0.4, p ? '#007777' : '#882222');
+                bodyGrad.addColorStop(1, c2);
+                ctx.fillStyle = bodyGrad;
+                ctx.beginPath();
+                ctx.roundRect(-hOff, hTop, hW, hH, 3);
+                ctx.fill();
+
+                // Hull armor panel bevels
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.2)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.roundRect(-hOff + 3, hTop + 3, hW - 6, hH - 6, 2);
+                ctx.stroke();
+
+                // Hull front chevron
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.35)`;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(-6, hTop + 4);
+                ctx.lineTo(0, hTop + 1);
+                ctx.lineTo(6, hTop + 4);
+                ctx.stroke();
+
+                // Hull rear grille
+                ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 4; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(-8, hTop + hH - 6 - i * 3);
+                    ctx.lineTo(8, hTop + hH - 6 - i * 3);
+                    ctx.stroke();
+                }
+
+                // Side armor rivets
+                ctx.fillStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.25)`;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(-hOff + 5, hTop + 6 + i * (hH - 12) / 2, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(hOff - 5, hTop + 6 + i * (hH - 12) / 2, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Exhaust pipes at rear
+                ctx.fillStyle = '#222';
+                ctx.beginPath();
+                ctx.roundRect(-9, hTop + hH, 4, 5, 1);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.roundRect(5, hTop + hH, 4, 5, 1);
+                ctx.fill();
+                // Exhaust glow
+                if (p || Math.random() > 0.5) {
+                    ctx.fillStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.15)`;
+                    ctx.beginPath();
+                    ctx.arc(-7, hTop + hH + 5, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(7, hTop + hH + 5, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // === TURRET ===
+                // Turret base shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.beginPath();
+                ctx.ellipse(0, 2 + bob, 13, 10, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Turret body
+                const tGrad = ctx.createRadialGradient(-2, -2 + bob, 0, 0, 0 + bob, 12);
+                tGrad.addColorStop(0, p ? '#00bbbb' : '#bb3333');
+                tGrad.addColorStop(0.6, p ? '#008888' : '#882222');
+                tGrad.addColorStop(1, c2);
+                ctx.fillStyle = tGrad;
+                ctx.beginPath();
+                ctx.arc(0, bob, 11, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Turret ring
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.3)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(0, bob, 11, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Turret hatch
+                ctx.fillStyle = p ? '#005555' : '#551111';
+                ctx.beginPath();
+                ctx.ellipse(-3, -3 + bob, 4, 3, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.2)`;
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
+
+                // Vision slot
+                ctx.fillStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.5)`;
+                ctx.fillRect(-2, -8 + bob, 4, 2);
+
+                // === BARREL ===
+                const bLen = 28;
+                const bW = 5;
+                const bY = -H/2 - 4 + bob;
+                // Barrel shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(-bW/2 - 1, bY, bW + 2, bLen);
+                // Barrel body with bevel
+                const barGrad = ctx.createLinearGradient(-bW/2, 0, bW/2, 0);
+                barGrad.addColorStop(0, '#333');
+                barGrad.addColorStop(0.3, '#555');
+                barGrad.addColorStop(0.5, '#666');
+                barGrad.addColorStop(0.7, '#555');
+                barGrad.addColorStop(1, '#333');
+                ctx.fillStyle = barGrad;
+                ctx.fillRect(-bW/2, bY, bW, bLen);
+                // Barrel thermal sleeve rings
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 2;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(-bW/2 - 0.5, bY + 4 + i * 8);
+                    ctx.lineTo(bW/2 + 0.5, bY + 4 + i * 8);
+                    ctx.stroke();
+                }
+                // Barrel highlight line
+                ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(-bW/2 + 1.5, bY + 2);
+                ctx.lineTo(-bW/2 + 1.5, bY + bLen - 2);
+                ctx.stroke();
+
+                // Muzzle brake
+                const mY = bY - 3;
+                ctx.fillStyle = '#2a2a2a';
+                ctx.beginPath();
+                ctx.roundRect(-4, mY, 8, 6, 1);
+                ctx.fill();
+                // Muzzle bore
+                ctx.fillStyle = '#111';
+                ctx.beginPath();
+                ctx.arc(0, mY - 1, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Muzzle glow
+                ctx.shadowColor = glow;
+                ctx.shadowBlur = 8;
+                ctx.fillStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.6)`;
+                ctx.beginPath();
+                ctx.arc(0, mY - 1, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // === ANTENNA ===
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.4)`;
+                ctx.lineWidth = 0.7;
+                ctx.beginPath();
+                ctx.moveTo(8, -6 + bob);
+                ctx.lineTo(12, -20 + bob);
+                ctx.stroke();
+                // Antenna tip
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(12, -20 + bob, 1.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // === OVERALL GLOW ===
+                ctx.shadowColor = glow;
+                ctx.shadowBlur = 12;
+                ctx.strokeStyle = `rgba(${glowR[0]},${glowR[1]},${glowR[2]},0.15)`;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.roundRect(-hOff - 1, hTop - 1, hW + 2, hH + 2, 4);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // === HEALTH BAR ===
+                if (this.health < this.maxHealth) {
+                    const hpRatio = this.health / this.maxHealth;
+                    const barW = 32, barH = 4;
+                    const barY = H/2 + 6;
+                    // Background
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.beginPath();
+                    ctx.roundRect(-barW/2 - 1, barY - 1, barW + 2, barH + 2, 2);
+                    ctx.fill();
+                    // Bar bg
+                    ctx.fillStyle = '#222';
+                    ctx.fillRect(-barW/2, barY, barW, barH);
+                    // Bar fill
+                    const hpColor = hpRatio > 0.5 ? '#00ff88' : (hpRatio > 0.25 ? '#ffff00' : '#ff3366');
+                    ctx.fillStyle = hpColor;
+                    ctx.fillRect(-barW/2, barY, barW * hpRatio, barH);
+                    // Bar highlight
+                    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                    ctx.fillRect(-barW/2, barY, barW * hpRatio, barH / 2);
+                }
+
+                ctx.restore();
+            }
+
+            move(direction) {
+                let newX = this.x;
+                let newY = this.y;
+
+                const speed = this.speed;
+
+                // 绝对方向移动：每个方向有固定朝向
+                if (direction === 'up') {
+                    this.angle = 0;
+                    newY -= speed;
+                } else if (direction === 'down') {
+                    this.angle = Math.PI;
+                    newY += speed;
+                } else if (direction === 'left') {
+                    this.angle = -Math.PI / 2;
+                    newX -= speed;
+                } else if (direction === 'right') {
+                    this.angle = Math.PI / 2;
+                    newX += speed;
+                }
+
+                // 边界检测
+                newX = Math.max(25, Math.min(canvas.width - 25, newX));
+                newY = Math.max(60, Math.min(canvas.height - 25, newY));
+
+                // 围墙碰撞检测
+                if (!this.checkWallCollision(newX, newY)) {
+                    this.x = newX;
+                    this.y = newY;
+                    this.bobOffset += 0.3;
+                } else {
+                    // 碰撞了！如果是敌人，尝试转向
+                    if (!this.isPlayer) {
+                        this.angle += (Math.random() > 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.5);
+                    }
+                }
+            }
+
+            checkWallCollision(x, y) {
+                const halfSize = 18;
+                for (let wall of walls) {
+                    if (x + halfSize > wall.x && x - halfSize < wall.x + wall.w &&
+                        y + halfSize > wall.y && y - halfSize < wall.y + wall.h) {
+                        return true;
+                    }
+                }
+                // 坦克之间碰撞
+                if (this.isPlayer) {
+                    for (let enemy of enemies) {
+                        if (enemy === this) continue;
+                        const dx = x - enemy.x;
+                        const dy = y - enemy.y;
+                        if (Math.sqrt(dx*dx + dy*dy) < 40) return true;
+                    }
+                }
+                return false;
+            }
+
+            rotate(dir) {
+                this.angle += dir * 0.06;
+            }
+
+            shoot() {
+                if (this.cooldown <= 0) {
+                    this.cooldown = 25;
+                    const bulletX = this.x + Math.sin(this.angle) * 28;
+                    const bulletY = this.y - Math.cos(this.angle) * 28;
+                    bullets.push(new Bullet(bulletX, bulletY, this.angle, this.isPlayer));
+                }
+            }
+
+            update() {
+                if (this.cooldown > 0) this.cooldown--;
+
+                if (!this.isPlayer) {
+                    const levelData = levels[gameState.level - 1];
+                    const lastX = this.x;
+                    const lastY = this.y;
+
+                    // 检测是否碰到障碍物或边界
+                    const hitWallOrEdge = this.checkWallCollision(this.x, this.y);
+                    const nearEdge = this.x < 40 || this.x > canvas.width - 40 || this.y < 80 || this.y > canvas.height - 40;
+
+                    // 碰到障碍或边界时，强制转向
+                    if (hitWallOrEdge || nearEdge) {
+                        // 计算一个远离边界/障碍物的方向
+                        if (this.x < 60) {
+                            this.angle = Math.PI / 2; // 朝右
+                        } else if (this.x > canvas.width - 60) {
+                            this.angle = -Math.PI / 2; // 朝左
+                        }
+                        if (this.y < 100) {
+                            this.angle = Math.PI; // 朝下
+                        } else if (this.y > canvas.height - 60) {
+                            this.angle = 0; // 朝上
+                        }
+                        // 随机加一点偏移，避免卡死
+                        this.angle += (Math.random() - 0.5) * 0.5;
+                    }
+
+                    // 追踪玩家倾向 - 根据关卡难度
+                    if (Math.random() < levelData.intel * 0.1) {
+                        const angleToPlayer = Math.atan2(player.y - this.y, player.x - this.x);
+                        let angleDiff = angleToPlayer - this.angle;
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                        this.angle += angleDiff * 0.1;
+                    }
+
+                    // 随机移动
+                    if (Math.random() < 0.08) {
+                        this.angle += (Math.random() - 0.5) * Math.PI * 0.5;
+                    }
+
+                    // 执行移动 - 根据当前angle决定方向
+                    const speed = this.speed;
+                    let newX = this.x + Math.sin(this.angle) * speed;
+                    let newY = this.y - Math.cos(this.angle) * speed;
+
+                    // 边界限制
+                    newX = Math.max(25, Math.min(canvas.width - 25, newX));
+                    newY = Math.max(60, Math.min(canvas.height - 25, newY));
+
+                    // 碰撞检测
+                    if (!this.checkWallCollision(newX, newY)) {
+                        this.x = newX;
+                        this.y = newY;
+                    }
+
+                    // 计算到玩家的角度用于射击
+                    const angleToPlayer = Math.atan2(player.y - this.y, player.x - this.x);
+                    let angleDiff = Math.abs(this.angle - angleToPlayer);
+                    while (angleDiff > Math.PI) angleDiff = Math.abs(angleDiff - Math.PI * 2);
+
+                    // 射击
+                    if (angleDiff < 0.8 && Math.random() < levelData.fireRate) {
+                        // 检查视线
+                        const bulletX = this.x + Math.sin(this.angle) * 25;
+                        const bulletY = this.y - Math.cos(this.angle) * 25;
+                        if (!this.checkWallCollision(bulletX, bulletY)) {
+                            this.shoot();
+                        }
+                    }
+                }
+            }
+        }
+
+        // 子弹类
+        class Bullet {
+            constructor(x, y, angle, fromPlayer) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.speed = 10;
+                this.radius = 5;
+                this.fromPlayer = fromPlayer;
+                this.alive = true;
+                this.trail = [];
+            }
+
+            update() {
+                this.trail.push({x: this.x, y: this.y});
+                if (this.trail.length > 5) this.trail.shift();
+
+                this.x += Math.sin(this.angle) * this.speed;
+                this.y -= Math.cos(this.angle) * this.speed;
+
+                if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.alive = false;
+                }
+            }
+
+            draw() {
+                // 拖尾效果
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = (i + 1) / this.trail.length * 0.5;
+                    const size = this.radius * (i + 1) / this.trail.length;
+                    ctx.beginPath();
+                    ctx.arc(this.trail[i].x, this.trail[i].y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = this.fromPlayer ? `rgba(0, 255, 255, ${alpha})` : `rgba(255, 51, 102, ${alpha})`;
+                    ctx.fill();
+                }
+
+                // 发光效果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.fromPlayer ? '#00ffff' : '#ff3366';
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                grad.addColorStop(0, '#fff');
+                grad.addColorStop(0.5, this.fromPlayer ? '#00ffff' : '#ff3366');
+                grad.addColorStop(1, this.fromPlayer ? '#008888' : '#881122');
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 围墙类
+        class Wall {
+            constructor(x, y, w, h, hp) {
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+                this.hp = hp;
+                this.maxHp = hp;
+                this.destroyed = false;
+                this.hitAnim = 0;
+            }
+
+            draw() {
+                if (this.destroyed) return;
+
+                const hitFlash = this.hitAnim > 0;
+                const x = this.x, y = this.y, w = this.w, h = this.h;
+                const isStrong = this.maxHp > 2;
+
+                // Shadow beneath wall
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(x + 2, y + 2, w, h);
+
+                // Main wall body gradient
+                const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+                if (isStrong) {
+                    grad.addColorStop(0, hitFlash ? '#888' : '#3a3a50');
+                    grad.addColorStop(0.3, hitFlash ? '#999' : '#4a4a60');
+                    grad.addColorStop(0.7, hitFlash ? '#777' : '#353555');
+                    grad.addColorStop(1, hitFlash ? '#666' : '#2a2a45');
+                } else {
+                    grad.addColorStop(0, hitFlash ? '#888' : '#4a4a5e');
+                    grad.addColorStop(0.3, hitFlash ? '#999' : '#555568');
+                    grad.addColorStop(0.7, hitFlash ? '#777' : '#444458');
+                    grad.addColorStop(1, hitFlash ? '#666' : '#38384c');
+                }
+                ctx.fillStyle = grad;
+                ctx.fillRect(x, y, w, h);
+
+                // Brick texture pattern
+                const brickH = 6, brickW = 10;
+                const offset = h > w; // vertical wall
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.lineWidth = 0.5;
+                if (!offset) {
+                    // Horizontal wall - horizontal brick rows
+                    for (let row = 0; row < Math.ceil(h / brickH); row++) {
+                        const ry = y + row * brickH;
+                        if (ry > y + h) break;
+                        ctx.beginPath();
+                        ctx.moveTo(x, ry);
+                        ctx.lineTo(x + w, ry);
+                        ctx.stroke();
+                        // Vertical joints (staggered)
+                        const off = (row % 2) * brickW / 2;
+                        for (let col = 0; col < Math.ceil(w / brickW) + 1; col++) {
+                            const jx = x + off + col * brickW;
+                            if (jx > x && jx < x + w) {
+                                ctx.beginPath();
+                                ctx.moveTo(jx, ry);
+                                ctx.lineTo(jx, Math.min(ry + brickH, y + h));
+                                ctx.stroke();
+                            }
+                        }
+                    }
+                } else {
+                    // Vertical wall - vertical brick pattern
+                    for (let col = 0; col < Math.ceil(w / brickH); col++) {
+                        const cx = x + col * brickH;
+                        if (cx > x + w) break;
+                        ctx.beginPath();
+                        ctx.moveTo(cx, y);
+                        ctx.lineTo(cx, y + h);
+                        ctx.stroke();
+                        const off = (col % 2) * brickW / 2;
+                        for (let row = 0; row < Math.ceil(h / brickW) + 1; row++) {
+                            const jy = y + off + row * brickW;
+                            if (jy > y && jy < y + h) {
+                                ctx.beginPath();
+                                ctx.moveTo(Math.max(cx, x), jy);
+                                ctx.lineTo(Math.min(cx + brickH, x + w), jy);
+                                ctx.stroke();
+                            }
+                        }
+                    }
+                }
+
+                // Surface highlight (top edge)
+                ctx.fillStyle = 'rgba(255,255,255,0.06)';
+                ctx.fillRect(x, y, w, 2);
+                // Surface shadow (bottom edge)
+                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                ctx.fillRect(x, y + h - 2, w, 2);
+
+                // Corner rivets (if wall is large enough)
+                if (w > 14 && h > 14) {
+                    ctx.fillStyle = isStrong ? 'rgba(255,170,0,0.4)' : 'rgba(0,255,255,0.3)';
+                    const r = 1.5;
+                    ctx.beginPath(); ctx.arc(x + 4, y + 4, r, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x + w - 4, y + 4, r, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x + 4, y + h - 4, r, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x + w - 4, y + h - 4, r, 0, Math.PI * 2); ctx.fill();
+                }
+
+                // Reinforced border for strong walls
+                if (isStrong) {
+                    // Double border
+                    ctx.strokeStyle = 'rgba(255,170,0,0.5)';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+                    ctx.strokeStyle = 'rgba(255,170,0,0.2)';
+                    ctx.lineWidth = 0.5;
+                    ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+                    // Energy lines along edges
+                    ctx.strokeStyle = 'rgba(255,170,0,0.15)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(x + 2, y + h/2);
+                    ctx.lineTo(x + w - 2, y + h/2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(x + w/2, y + 2);
+                    ctx.lineTo(x + w/2, y + h - 2);
+                    ctx.stroke();
+                    // Core energy dot
+                    ctx.fillStyle = 'rgba(255,170,0,0.3)';
+                    ctx.beginPath();
+                    ctx.arc(x + w/2, y + h/2, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Normal wall border
+                    ctx.strokeStyle = 'rgba(0,255,255,0.35)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+                }
+
+                // Damage cracks when damaged
+                if (this.hp < this.maxHp) {
+                    const hpRatio = this.hp / this.maxHp;
+                    // Cracks
+                    ctx.strokeStyle = `rgba(0,0,0,${0.4 * (1 - hpRatio)})`;
+                    ctx.lineWidth = 1;
+                    const cx = x + w * 0.3, cy = y + h * 0.4;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx + w * 0.15, cy - h * 0.2);
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx + w * 0.2, cy + h * 0.15);
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx - w * 0.1, cy + h * 0.1);
+                    ctx.stroke();
+                    // Second crack cluster
+                    const cx2 = x + w * 0.7, cy2 = y + h * 0.6;
+                    ctx.beginPath();
+                    ctx.moveTo(cx2, cy2);
+                    ctx.lineTo(cx2 - w * 0.1, cy2 - h * 0.15);
+                    ctx.moveTo(cx2, cy2);
+                    ctx.lineTo(cx2 + w * 0.12, cy2 + h * 0.1);
+                    ctx.stroke();
+
+                    // HP bar
+                    const barH = 3;
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.fillRect(x, y + h - barH - 1, w, barH + 1);
+                    const hpColor = hpRatio > 0.5 ? '#00ff88' : (hpRatio > 0.25 ? '#ffff00' : '#ff3366');
+                    ctx.fillStyle = hpColor;
+                    ctx.fillRect(x, y + h - barH, w * hpRatio, barH);
+                    // HP bar glow
+                    ctx.shadowColor = hpColor;
+                    ctx.shadowBlur = 4;
+                    ctx.fillRect(x, y + h - barH, w * hpRatio, barH);
+                    ctx.shadowBlur = 0;
+                }
+
+                // Hit flash overlay
+                if (hitFlash) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                    ctx.fillRect(x, y, w, h);
+                    this.hitAnim--;
+                }
+            }
+
+            hit() {
+                this.hp--;
+                this.hitAnim = 8;
+                if (this.hp <= 0) {
+                    this.destroyed = true;
+                    // 破坏特效
+                    for (let i = 0; i < 8; i++) {
+                        particles.push(new Particle(
+                            this.x + Math.random() * this.w,
+                            this.y + Math.random() * this.h,
+                            this.maxHp > 2 ? '#ffaa00' : '#00ffff'
+                        ));
+                    }
+                }
+            }
+        }
+
+        // 粒子效果
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.size = 3 + Math.random() * 4;
+                this.color = color;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // 爆炸效果
+        class Explosion {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = 5;
+                this.maxRadius = 50;
+                this.alpha = 1;
+                this.color = color;
+            }
+
+            update() {
+                this.radius += 4;
+                this.alpha -= 0.04;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.alpha;
+
+                // 外层
+                const grad1 = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                grad1.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                grad1.addColorStop(0.3, this.color);
+                grad1.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = grad1;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 内层
+                const innerRadius = this.radius * 0.5;
+                const grad2 = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, innerRadius);
+                grad2.addColorStop(0, '#fff');
+                grad2.addColorStop(0.5, '#ffff00');
+                grad2.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                ctx.fillStyle = grad2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, innerRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.globalAlpha = 1;
+            }
+
+            isDead() {
+                return this.alpha <= 0;
+            }
+        }
+
+        // 初始化关卡
+        function initLevel(levelNum) {
+            const levelData = levels[levelNum - 1];
+
+            // 玩家初始位置
+            player = new Tank(canvas.width / 2, canvas.height - 80, '#00aaaa', true);
+
+            // 生成敌人
+            enemies = [];
+            for (let i = 0; i < levelData.enemyCount; i++) {
+                let ex, ey, valid = false;
+                let attempts = 0;
+                while (!valid && attempts < 50) {
+                    ex = 60 + Math.random() * (canvas.width - 120);
+                    ey = 80 + Math.random() * 200;
+                    valid = true;
+                    // 检查与玩家距离
+                    const dx = ex - player.x;
+                    const dy = ey - player.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 150) valid = false;
+                    // 检查与围墙碰撞
+                    for (let w of walls) {
+                        if (ex + 20 > w.x && ex - 20 < w.x + w.w && ey + 20 > w.y && ey - 20 < w.y + w.h) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+                const enemy = new Tank(ex, ey, '#aa2222');
+                enemy.speed = levelData.enemySpeed;
+                enemies.push(enemy);
+            }
+
+            bullets = [];
+            particles = [];
+
+            // 重置生命
+            gameState.lives = gameState.maxLives;
+            updateUI();
+        }
+
+        // 初始化游戏
+        function init(startLevel = 1) {
+            gameState = {
+                level: startLevel,
+                score: 0,
+                lives: 3,
+                maxLives: 3,
+                isPlaying: true,
+                isPaused: false,
+                isGameOver: false,
+                isVictory: false,
+                levelTransition: true,
+                transitionTimer: 120
+            };
+
+            // 创建围墙
+            walls = [];
+            const mapType = levels[startLevel - 1].map;
+            for (let w of wallLayouts[mapType]) {
+                walls.push(new Wall(w.x, w.y, w.w, w.h, w.hp));
+            }
+
+            initLevel(startLevel);
+        }
+
+        // 带关卡的初始化（用于登录后从保存的关卡开始）
+        function initGameWithLevel(level) {
+            // 隐藏游戏界面，等登录后再显示
+            document.querySelector('h1').style.display = 'block';
+            document.querySelector('.game-container').style.display = 'block';
+            document.querySelector('.controls').style.display = 'block';
+            init(level);
+        }
+
+        function updateUI() {
+            levelEl.textContent = gameState.level;
+            scoreEl.textContent = gameState.score;
+            let hearts = '';
+            for (let i = 0; i < gameState.lives; i++) hearts += '❤';
+            livesEl.textContent = hearts;
+        }
+
+        // 碰撞检测
+        function checkCollision(a, b, aSize, bSize) {
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            return dist < aSize + bSize;
+        }
+
+        // 游戏循环
+        function gameLoop() {
+            // 清空画布
+            ctx.fillStyle = '#0a0a12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制网格背景
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+
+            // 关卡过渡
+            if (gameState.levelTransition) {
+                gameState.transitionTimer--;
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#00ffff';
+                ctx.font = 'bold 60px Orbitron, monospace';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#00ffff';
+                ctx.fillText(`第 ${gameState.level} 关`, canvas.width / 2, canvas.height / 2);
+                ctx.shadowBlur = 0;
+
+                if (gameState.transitionTimer <= 0) {
+                    gameState.levelTransition = false;
+                }
+
+                ctx.textAlign = 'left';
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            if (gameState.isGameOver || gameState.isVictory) {
+                // 仍然绘制游戏场景
+                walls.forEach(w => w.draw());
+                if (gameState.lives > 0) player.draw();
+                enemies.forEach(e => e.draw());
+                bullets.forEach(b => b.draw());
+
+                // 覆盖层
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (gameState.isVictory) {
+                    ctx.fillStyle = '#00ff88';
+                    ctx.font = 'bold 56px Orbitron, monospace';
+                    ctx.textAlign = 'center';
+                    ctx.shadowBlur = 30;
+                    ctx.shadowColor = '#00ff88';
+                    ctx.fillText('恭喜通关!', canvas.width / 2, canvas.height / 2 - 30);
+                } else {
+                    ctx.fillStyle = '#ff3366';
+                    ctx.font = 'bold 56px Orbitron, monospace';
+                    ctx.textAlign = 'center';
+                    ctx.shadowBlur = 30;
+                    ctx.shadowColor = '#ff3366';
+                    ctx.fillText('游戏结束', canvas.width / 2, canvas.height / 2 - 30);
+                }
+
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ffff00';
+                ctx.font = '28px Orbitron, monospace';
+                ctx.fillText(`最终得分: ${gameState.score}`, canvas.width / 2, canvas.height / 2 + 30);
+                ctx.fillText('按 R 重新开始', canvas.width / 2, canvas.height / 2 + 80);
+                ctx.textAlign = 'left';
+
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            // 玩家控制
+            if (keys['KeyW'] || keys['ArrowUp']) player.move('up');
+            if (keys['KeyS'] || keys['ArrowDown']) player.move('down');
+            if (keys['KeyA'] || keys['ArrowLeft']) player.move('left');
+            if (keys['KeyD'] || keys['ArrowRight']) player.move('right');
+            if (keys['Space']) player.shoot();
+
+            // 绘制围墙
+            walls.forEach(w => w.draw());
+            walls = walls.filter(w => !w.destroyed);
+
+            // 更新和绘制玩家
+            player.update();
+            player.draw();
+
+            // 更新和绘制敌坦克
+            enemies.forEach(enemy => {
+                enemy.update();
+                enemy.draw();
+            });
+
+            // 更新和绘制子弹
+            bullets.forEach(bullet => bullet.update());
+            bullets.forEach(bullet => bullet.draw());
+
+            // 粒子效果
+            particles.forEach(p => p.update());
+            particles.forEach(p => p.draw());
+            particles = particles.filter(p => !p.isDead());
+
+            // 碰撞检测
+            bullets = bullets.filter(bullet => {
+                if (!bullet.alive) return false;
+
+                // 子弹与围墙碰撞
+                for (let wall of walls) {
+                    if (bullet.x > wall.x && bullet.x < wall.x + wall.w &&
+                        bullet.y > wall.y && bullet.y < wall.y + wall.h) {
+                        wall.hit();
+                        bullet.alive = false;
+
+                        // 子弹击中特效
+                        for (let i = 0; i < 4; i++) {
+                            particles.push(new Particle(bullet.x, bullet.y, '#00ffff'));
+                        }
+                        return false;
+                    }
+                }
+
+                // 子弹打中敌坦克
+                if (bullet.fromPlayer) {
+                    for (let i = enemies.length - 1; i >= 0; i--) {
+                        if (checkCollision(bullet, enemies[i], bullet.radius, 18)) {
+                            // 扣血
+                            enemies[i].health -= 2;
+                            bullet.alive = false;
+
+                            // 击中特效
+                            for (let j = 0; j < 4; j++) {
+                                particles.push(new Particle(bullet.x, bullet.y, '#00ffff'));
+                            }
+
+                            // 血量归零则死亡
+                            if (enemies[i].health <= 0) {
+                                explosions.push(new Explosion(enemies[i].x, enemies[i].y, '#ff3366'));
+                                enemies.splice(i, 1);
+                                gameState.score += 100;
+                                updateUI();
+                            }
+
+                            // 检查过关 - 只有玩家还活着时才过关
+                            if (enemies.length === 0 && !gameState.isGameOver && gameState.lives > 0) {
+                                // 保存进度（过关后保存当前关卡）
+                                saveProgress(gameState.level, gameState.score);
+
+                                if (gameState.level >= 12) {
+                                    gameState.isVictory = true;
+                                } else {
+                                    gameState.level++;
+                                    // 创建新关卡围墙
+                                    walls = [];
+                                    const mapType = levels[gameState.level - 1].map;
+                                    for (let w of wallLayouts[mapType]) {
+                                        walls.push(new Wall(w.x, w.y, w.w, w.h, w.hp));
+                                    }
+                                    initLevel(gameState.level);
+                                    gameState.levelTransition = true;
+                                    gameState.transitionTimer = 90;
+                                }
+                            }
+                            return false;
+                        }
+                    }
+                } else {
+                    // 子弹打中玩家
+                    if (checkCollision(bullet, player, bullet.radius, 18)) {
+                        bullet.alive = false;
+                        // 扣2点血（半血）
+                        player.health -= 2;
+
+                        // 击中特效
+                        for (let j = 0; j < 4; j++) {
+                            particles.push(new Particle(bullet.x, bullet.y, '#ff3366'));
+                        }
+
+                        // 血量归0则损失一条命
+                        if (player.health <= 0) {
+                            explosions.push(new Explosion(player.x, player.y, '#00ffff'));
+                            gameState.lives--;
+                            updateUI();
+
+                            if (gameState.lives <= 0) {
+                                gameState.isGameOver = true;
+                            } else {
+                                // 重置玩家位置和满血
+                                player.x = canvas.width / 2;
+                                player.y = canvas.height - 80;
+                                player.angle = 0;
+                                player.health = player.maxHealth;
+                            }
+                        }
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            // 玩家撞到敌坦克
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                if (checkCollision(player, enemies[i], 18, 18)) {
+                    // 双方都扣血
+                    enemies[i].health -= 2;
+                    player.health -= 2;
+
+                    // 撞击特效
+                    explosions.push(new Explosion(player.x, player.y, '#00ffff'));
+
+                    // 敌人死亡
+                    if (enemies[i].health <= 0) {
+                        explosions.push(new Explosion(enemies[i].x, enemies[i].y, '#ff3366'));
+                        enemies.splice(i, 1);
+                        gameState.score += 100;
+                        updateUI();
+                    }
+
+                    // 玩家血量归0
+                    if (player.health <= 0) {
+                        explosions.push(new Explosion(player.x, player.y, '#00ffff'));
+                        gameState.lives--;
+                        updateUI();
+
+                        if (gameState.lives <= 0) {
+                            gameState.isGameOver = true;
+                        } else {
+                            player.x = canvas.width / 2;
+                            player.y = canvas.height - 80;
+                            player.angle = 0;
+                            player.health = player.maxHealth;
+                        }
+                    }
+
+                    // 检查过关
+                    if (enemies.length === 0 && !gameState.isGameOver && gameState.lives > 0) {
+                        if (gameState.level >= 12) {
+                            gameState.isVictory = true;
+                        } else {
+                            gameState.level++;
+                            walls = [];
+                            const mapType = levels[gameState.level - 1].map;
+                            for (let w of wallLayouts[mapType]) {
+                                walls.push(new Wall(w.x, w.y, w.w, w.h, w.hp));
+                            }
+                            initLevel(gameState.level);
+                            gameState.levelTransition = true;
+                            gameState.transitionTimer = 90;
+                        }
+                    }
+                }
+            }
+
+            // 爆炸效果
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                explosions[i].update();
+                explosions[i].draw();
+                if (explosions[i].isDead()) {
+                    explosions.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        let explosions = [];
+
+        // 键盘事件
+        document.addEventListener('keydown', e => {
+            keys[e.code] = true;
+            if (e.code === 'KeyR' && (gameState.isGameOver || gameState.isVictory)) {
+                init();
+            }
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('keyup', e => {
+            keys[e.code] = false;
+        });
+
+        // 启动游戏 - 默认隐藏，等登录后显示
+        document.querySelector('h1').style.display = 'none';
+        document.querySelector('.game-container').style.display = 'none';
+        document.querySelector('.controls').style.display = 'none';
+
+        // 启动游戏循环（但游戏界面隐藏）
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>
