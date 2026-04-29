@@ -648,8 +648,8 @@
     <div class="controls">
         <span>W/&uarr; 前进</span>
         <span>S/&darr; 后退</span>
-        <span>A/&larr; 左平移</span>
-        <span>D/&rarr; 右平移</span>
+        <span>A/&larr; 左转</span>
+        <span>D/&rarr; 右转</span>
         <span>空格 射击</span>
     </div>
 
@@ -1018,10 +1018,22 @@
                 this.health = isPlayer ? 3 : 3;
                 this.maxHealth = isPlayer ? 3 : 3;
                 this.bobOffset = 0;
+                this.stuckTimer = 0;  // 卡住计时器
+                this.lastAngle = this.angle;  // 上次朝向
+                this.moveDistance = 0;  // 连续移动距离
+                this.invincibleTimer = 0;  // 无敌时间
             }
 
             draw() {
                 ctx.save();
+
+                // 无敌闪烁效果（玩家）
+                if (this.isPlayer && this.invincibleTimer > 0) {
+                    if (Math.floor(this.invincibleTimer / 5) % 2 === 0) {
+                        ctx.globalAlpha = 0.4;
+                    }
+                }
+
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
 
@@ -1320,24 +1332,19 @@
             }
 
             move(direction) {
+                const speed = this.speed;
                 let newX = this.x;
                 let newY = this.y;
 
-                const speed = this.speed;
-
-                // 绝对方向移动：每个方向有固定朝向
-                if (direction === 'up') {
-                    this.angle = 0;
-                    newY -= speed;
-                } else if (direction === 'down') {
-                    this.angle = Math.PI;
-                    newY += speed;
-                } else if (direction === 'left') {
-                    this.angle = -Math.PI / 2;
-                    newX -= speed;
-                } else if (direction === 'right') {
-                    this.angle = Math.PI / 2;
-                    newX += speed;
+                // 坦克朝向驱动移动
+                if (direction === 'forward') {
+                    // 向炮管方向前进
+                    newX = this.x + Math.sin(this.angle) * speed;
+                    newY = this.y - Math.cos(this.angle) * speed;
+                } else if (direction === 'backward') {
+                    // 向炮管反方向后退
+                    newX = this.x - Math.sin(this.angle) * speed;
+                    newY = this.y + Math.cos(this.angle) * speed;
                 }
 
                 // 边界检测
@@ -1349,12 +1356,34 @@
                     this.x = newX;
                     this.y = newY;
                     this.bobOffset += 0.3;
-                } else {
-                    // 碰撞了！如果是敌人，尝试转向
-                    if (!this.isPlayer) {
-                        this.angle += (Math.random() > 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.5);
+                }
+            }
+
+            // 前方碰撞检测（用于敌人AI预判）
+            checkForwardCollision(distance = 30) {
+                const checkX = this.x + Math.sin(this.angle) * distance;
+                const checkY = this.y - Math.cos(this.angle) * distance;
+                const halfSize = 18;
+                // 墙壁检测
+                for (let wall of walls) {
+                    if (checkX + halfSize > wall.x && checkX - halfSize < wall.x + wall.w &&
+                        checkY + halfSize > wall.y && checkY - halfSize < wall.y + wall.h) {
+                        return true;
                     }
                 }
+                // 边界检测
+                if (checkX < 25 || checkX > canvas.width - 25 || checkY < 60 || checkY > canvas.height - 25) {
+                    return true;
+                }
+                // 坦克之间碰撞检测
+                const allTanks = [player, ...enemies];
+                for (let tank of allTanks) {
+                    if (tank === this || !tank) continue;
+                    const dx = checkX - tank.x;
+                    const dy = checkY - tank.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 40) return true;
+                }
+                return false;
             }
 
             checkWallCollision(x, y) {
@@ -1365,14 +1394,13 @@
                         return true;
                     }
                 }
-                // 坦克之间碰撞
-                if (this.isPlayer) {
-                    for (let enemy of enemies) {
-                        if (enemy === this) continue;
-                        const dx = x - enemy.x;
-                        const dy = y - enemy.y;
-                        if (Math.sqrt(dx*dx + dy*dy) < 40) return true;
-                    }
+                // 坦克之间碰撞（所有坦克都检测）
+                const allTanks = [player, ...enemies];
+                for (let tank of allTanks) {
+                    if (tank === this || !tank) continue;
+                    const dx = x - tank.x;
+                    const dy = y - tank.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 40) return true;
                 }
                 return false;
             }
@@ -1392,45 +1420,49 @@
 
             update() {
                 if (this.cooldown > 0) this.cooldown--;
+                // 无敌时间倒计时
+                if (this.invincibleTimer > 0) this.invincibleTimer--;
 
                 if (!this.isPlayer) {
                     const levelData = levels[gameState.level - 1];
-                    const lastX = this.x;
-                    const lastY = this.y;
 
-                    // 检测是否碰到障碍物或边界
-                    const hitWallOrEdge = this.checkWallCollision(this.x, this.y);
-                    const nearEdge = this.x < 40 || this.x > canvas.width - 40 || this.y < 80 || this.y > canvas.height - 40;
+                    // === 前方射线检测预判碰撞 ===
+                    const aboutToHit = this.checkForwardCollision(35);
 
-                    // 碰到障碍或边界时，强制转向
-                    if (hitWallOrEdge || nearEdge) {
-                        // 计算一个远离边界/障碍物的方向
-                        if (this.x < 60) {
-                            this.angle = Math.PI / 2; // 朝右
-                        } else if (this.x > canvas.width - 60) {
-                            this.angle = -Math.PI / 2; // 朝左
+                    // 如果前方即将碰撞，主动转向
+                    if (aboutToHit) {
+                        this.stuckTimer++;
+                        // 随机转向（远离障碍物方向）
+                        if (Math.random() > 0.5) {
+                            this.angle += Math.PI / 2 + Math.random() * 0.5;
+                        } else {
+                            this.angle -= Math.PI / 2 + Math.random() * 0.5;
                         }
-                        if (this.y < 100) {
-                            this.angle = Math.PI; // 朝下
-                        } else if (this.y > canvas.height - 60) {
-                            this.angle = 0; // 朝上
-                        }
-                        // 随机加一点偏移，避免卡死
-                        this.angle += (Math.random() - 0.5) * 0.5;
+                        this.moveDistance = 0;  // 重置连续移动距离
+                    } else {
+                        // 正常移动距离计数
+                        this.moveDistance += this.speed;
+                        this.stuckTimer = 0;
+                    }
+
+                    // 如果在同一方向卡住太久，强制转向
+                    if (this.moveDistance > 200) {
+                        this.angle += (Math.random() - 0.5) * Math.PI;
+                        this.moveDistance = 0;
                     }
 
                     // 追踪玩家倾向 - 根据关卡难度
-                    if (Math.random() < levelData.intel * 0.1) {
+                    if (Math.random() < levelData.intel * 0.08 && !aboutToHit) {
                         const angleToPlayer = Math.atan2(player.y - this.y, player.x - this.x);
                         let angleDiff = angleToPlayer - this.angle;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        this.angle += angleDiff * 0.1;
+                        this.angle += angleDiff * 0.08;
                     }
 
-                    // 随机移动
-                    if (Math.random() < 0.08) {
-                        this.angle += (Math.random() - 0.5) * Math.PI * 0.5;
+                    // 随机移动倾向
+                    if (Math.random() < 0.05) {
+                        this.angle += (Math.random() - 0.5) * Math.PI * 0.4;
                     }
 
                     // 执行移动 - 根据当前angle决定方向
@@ -1442,10 +1474,14 @@
                     newX = Math.max(25, Math.min(canvas.width - 25, newX));
                     newY = Math.max(60, Math.min(canvas.height - 25, newY));
 
-                    // 碰撞检测
+                    // 碰撞检测（双重保险：前方检测+实际位置检测）
                     if (!this.checkWallCollision(newX, newY)) {
                         this.x = newX;
                         this.y = newY;
+                    } else {
+                        // 如果实际位置仍然碰撞，再转向
+                        this.angle += (Math.random() > 0.5 ? 1 : -1) * Math.PI / 2;
+                        this.moveDistance = 0;
                     }
 
                     // 计算到玩家的角度用于射击
@@ -1941,6 +1977,29 @@
                 return;
             }
 
+            // 暂停状态
+            if (gameState.isPaused) {
+                // 绘制半透明遮罩
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#00ffff';
+                ctx.font = 'bold 56px Orbitron, monospace';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#00ffff';
+                ctx.fillText('暂停', canvas.width / 2, canvas.height / 2 - 20);
+
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ffff00';
+                ctx.font = '24px Orbitron, monospace';
+                ctx.fillText('按 P 继续', canvas.width / 2, canvas.height / 2 + 30);
+                ctx.textAlign = 'left';
+
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
             if (gameState.isGameOver || gameState.isVictory) {
                 // 仍然绘制游戏场景
                 walls.forEach(w => w.draw());
@@ -1979,11 +2038,11 @@
                 return;
             }
 
-            // 玩家控制
-            if (keys['KeyW'] || keys['ArrowUp']) player.move('up');
-            if (keys['KeyS'] || keys['ArrowDown']) player.move('down');
-            if (keys['KeyA'] || keys['ArrowLeft']) player.move('left');
-            if (keys['KeyD'] || keys['ArrowRight']) player.move('right');
+            // 玩家控制 - 坦克朝向驱动
+            if (keys['KeyW'] || keys['ArrowUp']) player.move('forward');
+            if (keys['KeyS'] || keys['ArrowDown']) player.move('backward');
+            if (keys['KeyA'] || keys['ArrowLeft']) player.rotate(-1);
+            if (keys['KeyD'] || keys['ArrowRight']) player.rotate(1);
             if (keys['Space']) player.shoot();
 
             // 绘制围墙
@@ -2076,8 +2135,13 @@
                     // 子弹打中玩家
                     if (checkCollision(bullet, player, bullet.radius, 18)) {
                         bullet.alive = false;
+                        // 无敌时间，跳过伤害
+                        if (player.invincibleTimer > 0) return false;
+
                         // 扣2点血（半血）
                         player.health -= 2;
+                        // 受伤后1.5秒无敌时间
+                        player.invincibleTimer = 90;  // 约1.5秒（60fps）
 
                         // 击中特效
                         for (let j = 0; j < 4; j++) {
@@ -2110,9 +2174,37 @@
             // 玩家撞到敌坦克
             for (let i = enemies.length - 1; i >= 0; i--) {
                 if (checkCollision(player, enemies[i], 18, 18)) {
+                    // 计算碰撞方向向量
+                    const dx = player.x - enemies[i].x;
+                    const dy = player.y - enemies[i].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const nx = dx / dist;  // 归一化方向
+                    const ny = dy / dist;
+
+                    // 击退效果 - 双方各退40像素
+                    const knockbackDist = 40;
+                    // 玩家击退
+                    const playerNewX = player.x + nx * knockbackDist;
+                    const playerNewY = player.y + ny * knockbackDist;
+                    if (!player.checkWallCollision(playerNewX, playerNewY)) {
+                        player.x = Math.max(25, Math.min(canvas.width - 25, playerNewX));
+                        player.y = Math.max(60, Math.min(canvas.height - 25, playerNewY));
+                    }
+                    // 敌人击退（反向）
+                    const enemyNewX = enemies[i].x - nx * knockbackDist;
+                    const enemyNewY = enemies[i].y - ny * knockbackDist;
+                    if (!enemies[i].checkWallCollision(enemyNewX, enemyNewY)) {
+                        enemies[i].x = Math.max(25, Math.min(canvas.width - 25, enemyNewX));
+                        enemies[i].y = Math.max(60, Math.min(canvas.height - 25, enemyNewY));
+                    }
+
                     // 双方都扣血
                     enemies[i].health -= 2;
-                    player.health -= 2;
+                    // 无敌时间，跳过伤害
+                    if (player.invincibleTimer <= 0) {
+                        player.health -= 2;
+                        player.invincibleTimer = 90;  // 1.5秒无敌
+                    }
 
                     // 撞击特效
                     explosions.push(new Explosion(player.x, player.y, '#00ffff'));
@@ -2179,6 +2271,10 @@
             keys[e.code] = true;
             if (e.code === 'KeyR' && (gameState.isGameOver || gameState.isVictory)) {
                 init();
+            }
+            // 暂停功能
+            if (e.code === 'KeyP' && gameState.isPlaying && !gameState.isGameOver && !gameState.isVictory) {
+                gameState.isPaused = !gameState.isPaused;
             }
             if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
                 e.preventDefault();
